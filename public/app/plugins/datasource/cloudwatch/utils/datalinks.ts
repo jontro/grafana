@@ -1,4 +1,4 @@
-import { DataFrame, DataLink, DataQueryRequest, DataQueryResponse, ScopedVars, TimeRange } from '@grafana/data';
+import { DataFrame, FieldType, DataLink, DataQueryRequest, DataQueryResponse, ScopedVars, TimeRange, DataLinkClickEvent } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
 
 import { AwsUrl, encodeUrl } from '../aws_url';
@@ -33,14 +33,21 @@ export async function addDataLinksToLogsResponse(
         if (xrayLink) {
           field.config.links = [xrayLink];
         }
-      } else {
-        // Right now we add generic link to open the query in xray console to every field so it shows in the logs row
-        // details. Unfortunately this also creates link for all values inside table which look weird.
-        field.config.links = [
-          createAwsConsoleLink(curTarget, request.range, interpolatedRegion, replace, getVariableValue),
-        ];
+      } else if(field.name.endsWith('link')) {
+          field.values = field.values.map((item) => {return {toString: () => item};});
+          field.config.links = [createDataSetLink()];
       }
     }
+    dataFrame.fields.push({
+      name: "CloudWatch",
+      type: FieldType.string,
+      values: Array.from({length: dataFrame.length}, (v, k) => "CloudWatch"),
+      config: {
+        links: [
+          createAwsConsoleLink(curTarget, request.range, interpolatedRegion, replace, getVariableValue)
+        ]
+      }
+    });
   }
 }
 
@@ -61,6 +68,20 @@ async function createInternalXrayLink(datasourceUid: string, region: string): Pr
       datasourceUid: datasourceUid,
       datasourceName: ds.name,
     },
+  };
+}
+
+function createDataSetLink(): DataLink {
+  return {
+    url: "",
+    title: 'View link',
+    targetBlank: true,
+    onBuildUrl: (event: DataLinkClickEvent<any>) => {
+      if (event.replaceVariables) {
+        return event.replaceVariables("${__value.raw}")
+      }
+      return "";
+    }
   };
 }
 
